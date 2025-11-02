@@ -1,22 +1,13 @@
-using Amazon;
-using Amazon.DynamoDBv2;
-using Amazon.Extensions.NETCore.Setup;
-using ModelParserApp.Services;
+using ModelParserApp.Modules;
+using ModelParserWebApp.Modules;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Set which AWS profile to use
-builder.Services.AddDefaultAWSOptions(new AWSOptions
-{
-    Profile = "personal", // This is the name I've given to my personal account AWS configuration. Feel free to change.
-    Region = RegionEndpoint.EUWest1
-});
 
+// Add services - dependency injection defined in /Modules for readability
+builder.Services.AddAwsServices();
+builder.Services.AddDynamoDbServices(builder.Configuration);
 
-// Add services
-builder.Services.AddAWSService<IAmazonDynamoDB>();
-builder.Services.AddSingleton<DynamoService>();
-builder.Services.AddHostedService<DynamoDbInitializer>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -28,5 +19,7 @@ app.UseSwaggerUI();
 
 app.MapControllers();
 
+// Call to ensure table existing 
+app.InitializeDynamoDb();
 
 app.Run();

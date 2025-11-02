@@ -6,12 +6,12 @@ namespace ModelParserWebApp.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class LxfmlController([FromServices] DynamoService dynamoService) : ControllerBase
+public class LxfmlController : ControllerBase
 {
     [HttpGet("{modelId}")]
-    public async Task<IActionResult> GetModel(string modelId)
+    public async Task<IActionResult> GetModel(string modelId, [FromServices] IModelStorageService storageService)
     {
-        var result = await dynamoService.ReadFromDynamoDbAsync(modelId);
+        var result = await storageService.Get(modelId);
 
         if (result == null)
             return NotFound($"Model with ID {modelId} not found.");
@@ -19,12 +19,26 @@ public class LxfmlController([FromServices] DynamoService dynamoService) : Contr
         return Ok(result);
     }
 
+    [HttpGet]
+    public async Task<IActionResult> GetModels([FromServices] IModelStorageService storageService)
+    {
+        var result = await storageService.GetAll();
+
+        if (result == null)
+            return NotFound("Could not fetch all models.");
+
+        return Ok(result);
+    }
+
     [HttpPost("upload")]
-    public async Task<IActionResult> Upload([FromForm] IFormFile file)
+    public async Task<IActionResult> Upload([FromForm] IFormFile file,
+        [FromServices] IModelStorageService storageService)
     {
         Console.WriteLine("Called upload api");
         if (file == null || file.Length == 0)
             return BadRequest("No file uploaded.");
+
+        var fileName = file.FileName;
 
         List<BrickInfo> bricks;
         using (var stream = file.OpenReadStream())
@@ -32,23 +46,10 @@ public class LxfmlController([FromServices] DynamoService dynamoService) : Contr
             bricks = LxfmlParser.Parse(stream);
         }
 
-        var totalBricks = bricks.Count;
-        var totalParts = bricks.Sum(b => b.Parts.Count);
-        var allMaterials = bricks
-            .SelectMany(b => b.Parts)
-            .SelectMany(p => p.Materials)
-            .Distinct()
-            .ToList();
-        var dynamoData = new ModelInfo();
-        dynamoData.TotalBricks = totalBricks;
-        dynamoData.TotalParts = totalParts;
-        dynamoData.Materials = allMaterials;
-        dynamoData.Bricks = bricks;
 
+        var modelData = ModelInfo.From(bricks, fileName, "");
+        await storageService.CreateOrReplaceModel(modelData);
 
-        var modelId = Guid.NewGuid().ToString();
-        await dynamoService.CreateInDynamoDbAsync("LxfmlModels", modelId, dynamoData);
-
-        return Ok(dynamoData);
+        return Ok(modelData);
     }
 }
